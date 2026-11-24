@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Top-down (camera above) drawing of the ROSCon India 2026 turtle mascot, facing +x like turtlesim. Drawn to match the logo's colours; not official artwork. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-110 -90 220 180" width="220" height="180" stroke="#0a0a0a" stroke-linejoin="round" stroke-linecap="round">
+  <!-- tail + rear feet -->
+  <polygon points="-62,0 -92,-9 -92,9" fill="#8fcf74" stroke-width="5"/>
+  <ellipse cx="-46" cy="-52" rx="26" ry="14" transform="rotate(-25 -46 -52)" fill="#8fcf74" stroke-width="5"/>
+  <ellipse cx="-46" cy="52" rx="26" ry="14" transform="rotate(25 -46 52)" fill="#8fcf74" stroke-width="5"/>
+  <!-- shell -->
+  <ellipse cx="-4" cy="0" rx="64" ry="58" fill="#2f7d3c" stroke-width="6"/>
+  <polygon points="-4,-26 20,-13 20,13 -4,26 -28,13 -28,-13" fill="#1b5e2e" stroke-width="4"/>
+  <g fill="#1b5e2e" stroke-width="0"><circle cx="-4" cy="-44" r="9"/><circle cx="-4" cy="44" r="9"/><circle cx="-50" cy="-18" r="8"/><circle cx="-50" cy="18" r="8"/><circle cx="42" cy="-30" r="8"/><circle cx="42" cy="30" r="8"/></g>
+  <!-- white and gold cloth over the shoulder -->
+  <g transform="rotate(-38 -4 0)"><rect x="-70" y="-14" width="140" height="28" fill="#fffaf0" stroke-width="5"/><line x1="-70" y1="-7" x2="70" y2="-7" stroke="#f0a030" stroke-width="4"/><line x1="-70" y1="7" x2="70" y2="7" stroke="#f0a030" stroke-width="4"/></g>
+  <!-- front arms: kurta sleeve + hand -->
+  <ellipse cx="44" cy="-58" rx="26" ry="14" transform="rotate(-35 44 -58)" fill="#1f7a3d" stroke-width="5"/>
+  <circle cx="63" cy="-74" r="10" fill="#a8d58b" stroke-width="4"/>
+  <ellipse cx="44" cy="58" rx="26" ry="14" transform="rotate(35 44 58)" fill="#1f7a3d" stroke-width="5"/>
+  <circle cx="63" cy="74" r="10" fill="#a8d58b" stroke-width="4"/>
+  <!-- head + eyes -->
+  <circle cx="82" cy="0" r="27" fill="#a8d58b" stroke-width="5"/>
+  <circle cx="96" cy="-10" r="4.5" fill="#0a0a0a" stroke-width="0"/><circle cx="96" cy="10" r="4.5" fill="#0a0a0a" stroke-width="0"/>
+  <!-- turban seen from above -->
+  <circle cx="70" cy="0" r="23" fill="#fffaf0" stroke-width="5"/>
+  <circle cx="70" cy="0" r="15" fill="none" stroke="#f0a030" stroke-width="5"/>
+  <circle cx="70" cy="0" r="7" fill="#f0a030" stroke-width="3"/>
+</svg>

@@ -1,0 +1,330 @@
+<!doctype html>
+<!--
+  Voice → Turtle. Mic → Moonshine (STT, WASM) → Needle 3 (tool call, WASM) → rosbridge → gate.py → turtlesim.
+  Everything but the robot runs in this tab. Serve with COOP/COEP headers (python3 serve.py); run the robot with
+  docker run --rm -p 9090:9090 ros2-voice-gate
+-->
+<html lang="en">
+<head>
+<script>if (new URLSearchParams(location.search).get("theme") !== "dark") document.documentElement.classList.add("light");</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voice → Turtle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" crossorigin="anonymous">
+<style>
+  :root {
+    --ground:#0c0d0f; --surface:#15171a; --raised:#23262b; --rule:#1d2025; --control:#444;
+    --text:#fff; --muted:#b4b4b4; --faint:#949494;
+    --accent:#c6f24e; --negative:#e5484d; --warning:#e5a93b;
+    --pill-neg-bg:#2c1a20; --pill-neg-ink:#e5566f; --pill-warn-bg:#2b2414; --pill-warn-ink:#e5a93b; --pill-ok-bg:#222a10; --pill-ok-ink:#c6f24e;
+    --btn:#fff; --btn-ink:#000; --focus:#fff; --grid:#2e3238; --trail:#c6f24e; --shadow:#0004; --hover:#666;
+    --pad:22px; --gap:14px; --r:20px;
+  }
+  /* light theme (default; ?theme=dark for the dark one): ROSCon India palette, higher contrast for a bright hall and a projector */
+  html.light {
+    --ground:#f6f1e1; --surface:#ffffff; --raised:#eef3ec; --rule:#e2e8de; --control:#a9b8ae;
+    --text:#07301f; --muted:#3a5547; --faint:#587063;
+    --accent:#0a5235; --negative:#c4161f; --warning:#9a5b00;
+    --pill-neg-bg:#fde4e1; --pill-neg-ink:#b3141c; --pill-warn-bg:#fdeec9; --pill-warn-ink:#7a4a00; --pill-ok-bg:#dcefd2; --pill-ok-ink:#0a5235;
+    --btn:#0a5235; --btn-ink:#fff; --focus:#0a5235; --grid:#d5ddd2; --trail:#0a5235; --shadow:#0002; --hover:#6c8174;
+  }
+  * { box-sizing:border-box; }
+  html, body { height:100%; }
+  body { margin:0; background:var(--ground); color:var(--text); font:14px/20px "Inter", system-ui, sans-serif; display:flex; flex-direction:column; }
+  .num { font-variant-numeric:tabular-nums; }
+  button, input { font:inherit; }
+
+  /* top bar: mark + name | ros status | the one primary control */
+  header { height:64px; display:flex; align-items:center; gap:18px; padding:0 29px; border-bottom:1px solid var(--rule); }
+  .mark { width:28px; height:28px; border-radius:50%; background:var(--accent); position:relative; flex:none; }
+  .mark::after { content:""; position:absolute; left:11px; top:7px; width:0; height:0; border:7px solid transparent; border-left:11px solid var(--ground); border-right:0; }
+  h1 { font-size:20px; font-weight:600; margin:0; white-space:nowrap; }
+  #ros { color:var(--muted); display:flex; align-items:center; gap:8px; margin-left:12px; }
+  #ros::before { content:""; width:8px; height:8px; border-radius:50%; background:var(--negative); }
+  #ros.on::before { background:var(--accent); }
+  #status { color:var(--faint); margin-left:auto; text-align:right; }
+  #gsw { display:flex; align-items:center; gap:8px; color:var(--muted); cursor:pointer; white-space:nowrap; }
+  #gsw input { width:18px; height:18px; accent-color:var(--btn); }
+  #gsw.off { color:var(--negative); }
+  #start { height:36px; padding:0 18px; border:0; border-radius:999px; background:var(--btn); color:var(--btn-ink); font-weight:500; cursor:pointer; flex:none; }
+  #start:disabled { background:var(--raised); color:var(--faint); cursor:default; }
+  #start:focus-visible, input:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+
+  main { flex:1; display:grid; grid-template-columns:minmax(0,3fr) minmax(360px,2fr); gap:var(--gap); padding:var(--gap) 29px 29px; min-height:0; }
+  .card { background:var(--surface); border-radius:var(--r); padding:var(--pad); display:flex; flex-direction:column; min-height:0; }
+  .card h2 { font-size:16px; font-weight:500; margin:0 0 12px; display:flex; justify-content:space-between; align-items:baseline; }
+  .card h2 span { color:var(--faint); font-weight:400; margin-left:auto; }
+  #reset { margin-left:14px; height:28px; padding:0 12px; border-radius:999px; border:1px solid var(--control); background:none; color:var(--muted); cursor:pointer; font-size:13px; }
+  #reset:hover { color:var(--text); border-color:var(--hover); } #reset:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+
+  /* the robot: biggest thing on the screen */
+  #robot { gap:14px; }
+  #robot .stage { flex:1; min-height:0; display:flex; justify-content:center; align-items:center; }
+  canvas { background:var(--raised); border-radius:8px; }
+  #say { display:flex; gap:10px; align-items:center; }
+  #say input { flex:1; height:40px; padding:0 14px; border-radius:999px; border:1px solid var(--control); background:var(--ground); color:var(--text); }
+  #say input::placeholder { color:var(--faint); }
+  #say span { color:var(--faint); white-space:nowrap; }
+
+  /* the pipeline: one command's journey, stage by stage */
+  aside { display:flex; flex-direction:column; gap:var(--gap); min-height:0; }
+  #pipe, #log { flex:none; } /* cards keep their own height; the ground below is ground, not a hole */
+  #pipe { gap:0; }
+  .step { display:grid; grid-template-columns:110px 1fr auto; gap:14px; align-items:baseline; padding:18px 0; border-top:1px solid var(--rule); }
+  .step:first-of-type { border-top:0; }
+  .step .k { color:var(--muted); }
+  .step .v { font-size:24px; line-height:30px; min-height:30px; overflow-wrap:anywhere; }
+  .step .ms { color:var(--faint); text-align:right; white-space:nowrap; }
+  .step .v .dim { color:var(--faint); font-style:italic; }
+  .step .v .partial { color:var(--muted); }
+  .step .v .why { font-size:14px; line-height:20px; color:var(--muted); margin-top:4px; }
+  .step.lit .v { color:var(--accent); }
+  .step.bad .v { color:var(--negative); }
+  code { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:20px; }
+
+  /* the log: what every command did */
+  table { width:100%; border-collapse:collapse; table-layout:fixed; }
+  th { text-align:left; color:var(--faint); font-weight:400; font-size:12px; padding:0 10px 8px 0; white-space:nowrap; }
+  td { padding:9px 10px 9px 0; border-top:1px solid var(--rule); vertical-align:top; overflow-wrap:anywhere; }
+  td.num, th.num { text-align:right; padding-right:0; white-space:nowrap; }
+  td:nth-child(2) { color:var(--muted); }
+  .pill { display:inline-block; padding:1px 8px; border-radius:10px; font-size:12px; line-height:18px; }
+  .pill.ok { background:var(--pill-ok-bg); color:var(--pill-ok-ink); }
+  .pill.clamped, .pill.stop { background:var(--pill-warn-bg); color:var(--pill-warn-ink); }
+  .pill.rejected, .pill.unsure { background:var(--pill-neg-bg); color:var(--pill-neg-ink); }
+  .pill.sent { background:var(--raised); color:var(--muted); }
+  .empty { color:var(--faint); padding:12px 0; }
+
+  @media (max-width: 900px) {
+    header { padding:0 16px; height:56px; } #status { display:none; }
+    main { grid-template-columns:1fr; padding:var(--gap) 16px 16px; }
+    .step .v { font-size:17px; } code { font-size:15px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="mark" aria-hidden="true"></div>
+  <h1>Voice → Turtle</h1>
+  <div id="ros">rosbridge: connecting</div>
+  <label id="gsw"><input type="checkbox" id="gate" checked> Safety gate</label>
+  <div id="status">Loading models</div>
+  <button id="start" disabled>Loading models</button>
+</header>
+
+<main>
+  <section class="card" id="robot" aria-label="Robot">
+    <h2>turtlesim <span id="pose" class="num">x — · y — · θ —</span><button id="reset" type="button">Reset turtle</button></h2>
+    <div class="stage"><canvas id="c" width="800" height="800" aria-label="Turtle position and trail"></canvas></div>
+    <form id="say" autocomplete="off">
+      <input id="typed" placeholder="Or type it: go forward two meters" aria-label="Type a command">
+      <span>Arrow keys drive · space stops · V swaps view</span>
+    </form>
+  </section>
+
+  <aside>
+    <section class="card" id="pipe" aria-label="Pipeline">
+      <h2>One command, stage by stage <span>latency</span></h2>
+      <div class="step" id="s-heard"><div class="k">Heard</div><div class="v"><span class="dim">waiting for speech</span></div><div class="ms num"></div></div>
+      <div class="step" id="s-model"><div class="k">Understood</div><div class="v"></div><div class="ms num"></div></div>
+      <div class="step" id="s-gate"><div class="k">Gate</div><div class="v"></div><div class="ms num"></div></div>
+      <div class="step" id="s-robot"><div class="k">Robot</div><div class="v"></div><div class="ms num"></div></div>
+    </section>
+
+    <section class="card" id="log" aria-label="Command log">
+      <h2>Last commands <span id="count"></span></h2>
+      <table>
+        <thead><tr><th style="width:11%">Source</th><th style="width:25%">Said</th><th style="width:27%">Call</th><th>Gate</th><th class="num" style="width:62px">ms</th></tr></thead>
+        <tbody id="rows"><tr><td colspan="5" class="empty">Nothing yet. Press an arrow key.</td></tr></tbody>
+      </table>
+    </section>
+  </aside>
+</main>
+
+<script src="vendor/roslib.min.js"></script>
+<script src="vendor/cactus.js"></script>
+<script type="module">
+import { MicTranscriber, ModelArch } from "https://cdn.jsdelivr.net/npm/@moonshine-ai/moonshine-wasm@0.1.5/dist/index.js";
+
+const $ = id => document.getElementById(id);
+const status = t => $("status").textContent = t;
+const ms = t => `${Math.round(t)} ms`;
+
+// ---------- ROS: rosbridge over WebSocket ----------
+const ros = new ROSLIB.Ros();
+const topic = (name, messageType) => new ROSLIB.Topic({ ros, name, messageType });
+const cmdPub = topic("/voice_cmd", "std_msgs/msg/String");
+ros.on("connection", () => { $("ros").textContent = "rosbridge: connected"; $("ros").className = "on"; });
+ros.on("close", () => { $("ros").textContent = "rosbridge: reconnecting"; $("ros").className = ""; setTimeout(connect, 1500); });
+ros.on("error", () => {});
+function connect() { try { ros.connect("ws://localhost:9090"); } catch {} }
+connect();
+
+// ---------- Needle tools (the schema IS the prompt; keep descriptions literal) ----------
+const TOOLS = [
+  { name: "move", description: "Drive the robot forward or backward by a distance in meters.",
+    parameters: { type: "object", properties: { dir: { type: "string", enum: ["forward", "backward"] }, distance: { type: "number", description: "meters" } } },
+    triggers: ["\\b(move|go|drive|forward|forwards|ahead|back|backward|backwards|reverse)\\b"] },
+  { name: "turn", description: "Rotate the robot left or right by an angle in degrees.",
+    parameters: { type: "object", properties: { dir: { type: "string", enum: ["left", "right"] }, angle: { type: "number", description: "degrees" } } },
+    triggers: ["\\b(turn|rotate|spin|left|right)\\b"] },
+  { name: "stop", description: "Stop all motion immediately.", parameters: { type: "object", properties: {} },
+    triggers: ["\\b(stop|halt|freeze|wait)\\b"] },
+];
+const WORDS = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, half: 0.5, ninety: 90, forty: 45 };
+const num = (v, d) => { if (typeof v === "number") return v; const n = parseFloat(v); if (!isNaN(n)) return n; return WORDS[String(v).trim().toLowerCase()] ?? d; };
+
+let needle;
+async function loadNeedle() { // Cactus runtime 4.0 (vendor/cactus.js + .wasm) running the Needle 3 weights. ./vendor.sh fetches them.
+  const M = await createCactus();
+  status("Loading Needle (35 MB)");
+  const bytes = new Uint8Array(await (await fetch("vendor/needle3.cact")).arrayBuffer());
+  const p = M._malloc(bytes.length); M.HEAPU8.set(bytes, p);
+  if (M._cactus_load(p, BigInt(bytes.length)) < 0) throw new Error("cactus_load: " + M.UTF8ToString(M._cactus_last_error()));
+  M._free(p);
+  if (M.ccall("cactus_init", "number", ["string", "string", "string"], [null, JSON.stringify(TOOLS), null]) < 0) throw new Error("cactus_init: " + M.UTF8ToString(M._cactus_last_error()));
+  const CAP = 65536, out = M._malloc(CAP);
+  needle = text => {
+    M._cactus_reset(); // ponytail: each command is one turn, no conversation state
+    const n = M.ccall("cactus_complete", "number", ["string", "number", "number", "number", "number", "number"], [text, 0, 0, 256, out, CAP]);
+    return n < 0 ? null : JSON.parse(M.UTF8ToString(out));
+  };
+}
+
+// ---------- The pipeline view ----------
+const step = (id, html, t = "", cls = "") => { const s = $("s-" + id); s.className = "step " + cls; s.querySelector(".v").innerHTML = html; s.querySelector(".ms").textContent = t; };
+const esc = s => String(s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+const callStr = c => `${c.name}(${Object.entries(c.arguments ?? {}).map(([k, v]) => `${k}=${v}`).join(", ")})`;
+
+// ---------- Commands ----------
+const LOG = []; let pending = null; // the command whose gate verdict / robot motion we are waiting for
+function send(source, said, call, t0) {
+  const rec = { source, said, call: callStr(call), verdict: "sent", t0, tModel: performance.now(), tGate: null, tRobot: null };
+  pending = rec; LOG.unshift(rec); if (LOG.length > 5) LOG.pop();
+  cmdPub.publish(new ROSLIB.Message({ data: JSON.stringify({ cmd: call.name, ...call.arguments, ...($("gate").checked ? {} : { ungated: true }) }) }));
+  step("gate", `<span class="dim">waiting for gate.py</span>`); step("robot", "");
+  render();
+}
+function understood(source, text, t0 = performance.now()) {
+  if (!text.trim()) return;
+  step("heard", esc(text), source === "voice" ? "" : source);
+  if (!needle) { step("model", `<span class="dim">model not loaded</span>`); return; }
+  const r = needle(text), took = performance.now() - t0;
+  const call = r?.function_calls?.[0];
+  const why = r?.reasoning ? `<div class="why">${esc(r.reasoning)}</div>` : "";
+  if (call && r.confidence >= 0.5) { // ponytail: off-script chatter still yields a low-conf call; 0.5 measured: "turn left" 0.55, "hello everyone" 0.42
+    const a = call.arguments ?? {};
+    if (call.name === "move") a.distance = num(a.distance, 1);
+    if (call.name === "turn") a.angle = num(a.angle, 90);
+    step("model", `<code>${esc(callStr(call))}</code> <span class="dim">conf ${r.confidence.toFixed(2)}</span>${why}`, ms(took), "lit");
+    send(source, text, call, t0);
+  } else {
+    const held = call ?? r?.suppressed_calls?.[0];
+    step("model", (held ? `unsure: <code>${esc(held.name)}</code> <span class="dim">conf ${r.confidence?.toFixed(2)}</span>` : "nothing recognised") + why, ms(took), "bad");
+    step("gate", `<span class="dim">nothing sent</span>`); step("robot", "");
+    LOG.unshift({ source, said: text, call: held ? held.name + "?" : "—", verdict: "unsure", t0, tModel: performance.now() }); if (LOG.length > 5) LOG.pop(); render();
+  }
+}
+function direct(source, call) { // keys: no model, straight to the gate
+  step("heard", esc(source), "keys"); step("model", `<span class="dim">skipped, no model needed</span>`, "", "");
+  send(source, source, call, performance.now());
+}
+
+topic("/gate_log", "std_msgs/msg/String").subscribe(m => {
+  const g = JSON.parse(m.data); if (!pending) return;
+  pending.verdict = g.verdict; pending.note = g.note; pending.tGate = performance.now();
+  const cls = g.verdict === "ok" ? "lit" : g.verdict === "rejected" ? "bad" : "";
+  step("gate", `${esc(g.note)}${g.duration ? ` <span class="dim">for ${g.duration} s</span>` : ""}`, ms(pending.tGate - pending.tModel) + " round trip", cls);
+  if (g.verdict === "rejected") { step("robot", `<span class="dim">nothing moved</span>`); pending = null; }
+  render();
+});
+
+// ---------- Robot: pose → canvas ----------
+const ctx = $("c").getContext("2d"), W = 800, S = W / 11.09; // turtlesim world ≈ 11.09 m
+const stage = document.querySelector("#robot .stage");
+new ResizeObserver(() => { const s = Math.min(stage.clientWidth, stage.clientHeight) + "px"; $("c").style.width = $("c").style.height = s; }).observe(stage);
+$("gate").onchange = e => $("gsw").classList.toggle("off", !e.target.checked);
+$("reset").onclick = () => { trail.length = 0; new ROSLIB.Service({ ros, name: "/reset", serviceType: "std_srvs/srv/Empty" }).callService({}, () => {}, () => {}); };
+let pose = null, lastMove = 0; const trail = [];
+const mascot = new Image(); mascot.src = "assets/mascot.png";
+const mtop = new Image(); mtop.src = "assets/mascot-top.svg"; let topView = true; // V swaps front view / top (camera above) view
+topic("/turtle1/pose", "turtlesim/msg/Pose").subscribe(p => {
+  const moved = pose && (Math.abs(p.x - pose.x) > 1e-4 || Math.abs(p.y - pose.y) > 1e-4 || Math.abs(p.theta - pose.theta) > 1e-3);
+  if (moved && pending && pending.tGate !== null && pending.tRobot === null) {
+    pending.tRobot = performance.now();
+    step("robot", "moving", ms(pending.tRobot - pending.t0) + " end to end", "lit"); render();
+  }
+  if (moved && pending && pending.verdict === "stop") { pending = null; }
+  pose = p; if (moved) { lastMove = performance.now(); trail.push([p.x, p.y]); } if (trail.length > 4000) trail.shift();
+  $("pose").textContent = `x ${p.x.toFixed(2)} · y ${p.y.toFixed(2)} · θ ${(p.theta * 180 / Math.PI).toFixed(0)}°`;
+});
+function draw() {
+  ctx.clearRect(0, 0, W, W);
+  const css = getComputedStyle(document.documentElement); ctx.strokeStyle = css.getPropertyValue("--grid"); ctx.lineWidth = 1;
+  for (let i = 1; i < 11; i++) { ctx.beginPath(); ctx.moveTo(i * S, 0); ctx.lineTo(i * S, W); ctx.moveTo(0, i * S); ctx.lineTo(W, i * S); ctx.stroke(); }
+  if (trail.length > 1) {
+    ctx.strokeStyle = css.getPropertyValue("--trail"); ctx.lineWidth = 3; ctx.lineJoin = "round"; ctx.beginPath();
+    trail.forEach(([x, y], i) => ctx[i ? "lineTo" : "moveTo"](x * S, W - y * S)); ctx.stroke();
+  }
+  if (pose) { // the ROSCon India 2026 mascot: top view rotates with theta like turtlesim; front view (cut from the official logo) stands and flips
+    const px = pose.x * S, py = W - pose.y * S, moving = performance.now() - lastMove < 160;
+    if (topView) {
+      const k = 0.36 + (moving ? Math.abs(Math.sin(performance.now() / 70)) * 0.02 : 0);
+      if (mtop.complete) { ctx.save(); ctx.translate(px, py); ctx.rotate(-pose.theta); ctx.scale(k, k); ctx.drawImage(mtop, -110, -90, 220, 180); ctx.restore(); }
+    } else {
+      const H = 90, Wd = H * mascot.width / mascot.height, bob = moving ? Math.abs(Math.sin(performance.now() / 70)) * 6 : 0;
+      ctx.fillStyle = css.getPropertyValue("--shadow"); ctx.beginPath(); ctx.ellipse(px, py + 4, Wd * .42, 12, 0, 0, 7); ctx.fill();
+      ctx.save(); ctx.translate(px, py); ctx.rotate(-pose.theta); ctx.fillStyle = css.getPropertyValue("--trail"); ctx.beginPath(); ctx.moveTo(78, 0); ctx.lineTo(52, -15); ctx.lineTo(52, 15); ctx.closePath(); ctx.fill(); ctx.restore();
+      if (mascot.complete) { ctx.save(); ctx.translate(px, py - bob); if (Math.cos(pose.theta) < -0.01) ctx.scale(-1, 1); ctx.drawImage(mascot, -Wd / 2, -H, Wd, H); ctx.restore(); }
+    }
+  } else { ctx.fillStyle = css.getPropertyValue("--faint"); ctx.font = "16px Inter, system-ui, sans-serif"; ctx.textAlign = "center"; ctx.fillText("waiting for /turtle1/pose", W / 2, W / 2); }
+  requestAnimationFrame(draw);
+}
+draw();
+
+// ---------- Log table ----------
+function render() {
+  $("count").textContent = LOG.length ? `${LOG.length} shown` : "";
+  $("rows").innerHTML = LOG.map(r => {
+    const total = r.tRobot ? ms(r.tRobot - r.t0) : r.tGate ? ms(r.tGate - r.t0) : r.verdict === "unsure" ? ms(r.tModel - r.t0) : "—";
+    return `<tr><td>${esc(r.source)}</td><td>${esc(r.said)}</td><td><code style="font-size:13px">${esc(r.call)}</code></td><td><span class="pill ${r.verdict}">${esc(r.note ?? r.verdict)}</span></td><td class="num">${total}</td></tr>`;
+  }).join("") || `<tr><td colspan="5" class="empty">Nothing yet. Press an arrow key.</td></tr>`;
+}
+
+// ---------- Inputs: keys (classic teleop), typed, voice ----------
+addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
+  if (e.key === "v") { topView = !topView; return; }
+  const map = { ArrowUp: ["↑", "move", { dir: "forward", distance: 1 }], ArrowDown: ["↓", "move", { dir: "backward", distance: 1 }],
+                ArrowLeft: ["←", "turn", { dir: "left", angle: 45 }], ArrowRight: ["→", "turn", { dir: "right", angle: 45 }], " ": ["space", "stop", {}] };
+  const k = map[e.key]; if (!k) return; e.preventDefault();
+  direct(k[0], { name: k[1], arguments: k[2] });
+});
+$("say").onsubmit = e => { e.preventDefault(); understood("typed", $("typed").value); $("typed").value = ""; };
+
+let stopFired = false;
+const mic = new MicTranscriber()
+  .language("en")
+  .modelArch(ModelArch.TinyStreaming)
+  .onProgress((f, file) => status(`Downloading Moonshine ${Math.round(f * 100)}%`))
+  .onText(t => { // partial transcript: the "stop" fast path skips the model entirely
+    step("heard", `<span class="partial">${esc(t)}</span>`);
+    if (!stopFired && /\bstop\b/i.test(t)) { stopFired = true; step("model", `<span class="dim">skipped: "stop" matched on the partial transcript</span>`, "0 ms", "lit"); send("voice fast path", t, { name: "stop", arguments: {} }, performance.now()); }
+  })
+  .onLine(line => { if (stopFired) { stopFired = false; return; } understood("voice", line.text); })
+  .onError(e => status("STT error: " + e.message));
+
+(async () => {
+  try {
+    if (!crossOriginIsolated) status("Not cross-origin isolated: run python3 serve.py. Keys and typing still work.");
+    await Promise.all([loadNeedle(), mic.load()]);
+    mic.setKeyterms(["move", "go", "forward", "backward", "turn", "left", "right", "stop", "meters", "degrees"]);
+    status("Models loaded, running in this tab");
+    $("start").disabled = false; $("start").textContent = "Start microphone";
+    $("start").onclick = async () => { await mic.start(); $("start").textContent = "Listening"; $("start").disabled = true; step("heard", `<span class="dim">listening</span>`); };
+  } catch (e) { status("Load failed: " + e.message); console.error(e); }
+})();
+</script>
+</body>
+</html>
