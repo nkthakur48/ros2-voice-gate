@@ -49,3 +49,9 @@ The model proposes JSON on `/voice_cmd`. `gate.py` decides what reaches `/turtle
 ## Built with
 
 [Moonshine](https://github.com/moonshine-ai/moonshine) speech to text (WASM), Needle 3 intent model on the Cactus runtime, [roslibjs](https://github.com/RobotWebTools/roslibjs), [rosbridge_suite](https://github.com/RobotWebTools/rosbridge_suite), turtlesim, and ROS 2 Jazzy. The turtle and robot artwork is taken from the ROSCon India 2026 logo and is used here for the demo.
+
+## License
+
+Copyright 2026 Nishant Thakur. The code in this repository is released under the [Apache License 2.0](LICENSE).
+
+Not covered by that licence: the dependencies that `vendor.sh` and the page download (Moonshine, Needle 3 and the Cactus runtime, roslibjs), which keep their own licences, and the turtle and robot artwork in `assets/`, which comes from the ROSCon India 2026 logo.
