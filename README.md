@@ -4,26 +4,7 @@ Voice control for ROS 2 that runs in a browser tab, with a safety gate between t
 
 You say "go forward two meters". A small speech model and a small intent model turn it into a command, and the gate decides what actually reaches the robot.
 
-```mermaid
-flowchart LR
-  A[Microphone] --> B[Moonshine<br/>speech to text, WASM]
-  B --> C[Needle 3<br/>tool call, WASM]
-  C --> D[roslibjs]
-  D --> E[rosbridge]
-  E --> F[gate.py<br/>/voice_cmd]
-  F --> G[/turtle1/cmd_vel]
-  G --> H[turtlesim]
-  subgraph tab [Browser tab]
-    B
-    C
-    D
-  end
-  subgraph box [Docker container]
-    E
-    F
-    H
-  end
-```
+![How it fits together: microphone, Moonshine and Needle 3 in the browser tab, roslibjs over a websocket to rosbridge, gate.py and turtlesim in the Docker container](docs/architecture.png)
 
 ## Run it
 
